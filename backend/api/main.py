@@ -38,7 +38,12 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "https://ecoagent.am"],
+    allow_origins=[
+        "http://localhost:3000",
+        "https://ecoagent.am",
+        "https://ecoagent-armenia-9dm3flk7n-armarcaxs-projects.vercel.app",
+        "https://ecoagent-armenia.vercel.app",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

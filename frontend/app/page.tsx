@@ -47,7 +47,7 @@ export default function EcoAgentDashboard() {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, streaming]);
 
-  const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+  const API = process.env.NEXT_PUBLIC_API_URL || "https://ecoagent-armenia.onrender.com";
 
   async function sendMessage(text: string) {
     if (!text.trim() || loading) return;

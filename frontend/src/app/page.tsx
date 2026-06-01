@@ -1,6 +1,9 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import rehypeHighlight from "rehype-highlight";
 
 const SECTORS = [
   { id: "all",          label: "Բոլոր ոլորտներ",    icon: "🌿" },
@@ -22,6 +25,8 @@ const EXAMPLES = [
   "Ինչ է ESG հիմնադրույթը շինարարական ընկերությունում?",
 ];
 
+const STORAGE_KEY = "ecoagent_chat_history";
+
 interface Source {
   title: string;
   doc_number: string;
@@ -42,6 +47,25 @@ export default function EcoAgentDashboard() {
   const [loading, setLoading]   = useState(false);
   const [streaming, setStreaming] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  // Load history on mount
+  useEffect(() => {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      try {
+        setMessages(JSON.parse(saved));
+      } catch (e) {
+        console.error("Failed to load chat history", e);
+      }
+    }
+  }, []);
+
+  // Save history on change
+  useEffect(() => {
+    if (messages.length > 0) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(messages));
+    }
+  }, [messages]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -71,11 +95,15 @@ export default function EcoAgentDashboard() {
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
-        for (const line of decoder.decode(value).split("\n").filter(l => l.startsWith("data: "))) {
+        const lines = decoder.decode(value).split("\n").filter(l => l.startsWith("data: "));
+        for (const line of lines) {
           try {
             const data = JSON.parse(line.slice(6));
             if (data.type === "sources") sources = data.sources;
-            else if (data.type === "text") { fullText += data.content; setStreaming(fullText); }
+            else if (data.type === "text") {
+              fullText += data.content;
+              setStreaming(fullText);
+            }
             else if (data.type === "done") {
               setMessages(m => [...m, { role: "assistant", content: fullText, sources, timestamp: new Date().toISOString() }]);
               setStreaming("");
@@ -99,8 +127,13 @@ export default function EcoAgentDashboard() {
     setLoading(false);
   }
 
+  function clearHistory() {
+    setMessages([]);
+    localStorage.removeItem(STORAGE_KEY);
+  }
+
   return (
-    <div style={{ minHeight:"100vh", background:"#0a0f0a", color:"#e8f0e8", fontFamily:"\'IBM Plex Mono\',monospace", display:"flex", flexDirection:"column" }}>
+    <div style={{ minHeight:"100vh", background:"#0a0f0a", color:"#e8f0e8", fontFamily:"'IBM Plex Mono',monospace", display:"flex", flexDirection:"column" }}>
 
       {/* Header */}
       <header style={{ borderBottom:"1px solid #1a3a1a", padding:"20px 32px", display:"flex", alignItems:"center", justifyContent:"space-between", background:"#080d08" }}>
@@ -115,10 +148,15 @@ export default function EcoAgentDashboard() {
             </div>
           </div>
         </div>
-        <div style={{ display:"flex", gap:8, fontSize:12, color:"#4a7a4a" }}>
-          {["arlis.am ✓","EU Directives ✓","ISO ✓"].map(t => (
-            <span key={t} style={{ background:"#0d2a0d", border:"1px solid #1a4a1a", borderRadius:4, padding:"4px 10px" }}>{t}</span>
-          ))}
+        <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+          <button onClick={clearHistory} style={{ background:"transparent", border:"1px solid #1a4a1a", color:"#4a7a4a", fontSize:10, padding:"4px 10px", borderRadius:4, cursor:"pointer" }}>
+            Մաքրել պատմությունը
+          </button>
+          <div style={{ display:"flex", gap:8, fontSize:12, color:"#4a7a4a" }}>
+            {["arlis.am ✓","EU Directives ✓","ISO ✓"].map(t => (
+              <span key={t} style={{ background:"#0d2a0d", border:"1px solid #1a4a1a", borderRadius:4, padding:"4px 10px" }}>{t}</span>
+            ))}
+          </div>
         </div>
       </header>
 
@@ -169,14 +207,18 @@ export default function EcoAgentDashboard() {
                   {msg.role==="user" ? "👤" : "🌿"}
                 </div>
                 <div style={{ maxWidth:"75%" }}>
-                  <div style={{ background: msg.role==="user" ? "#0d1a0d" : "#080d08", border:`1px solid ${msg.role==="user" ? "#1a3a1a" : "#142814"}`, borderRadius:10, padding:"14px 18px", fontSize:13, lineHeight:1.7, whiteSpace:"pre-wrap", color: msg.role==="user" ? "#81c784" : "#c8e6c9" }}>
-                    {msg.content}
+                  <div style={{ background: msg.role==="user" ? "#0d1a0d" : "#080d08", border:`1px solid ${msg.role==="user" ? "#1a3a1a" : "#142814"}`, borderRadius:10, padding:"14px 18px", fontSize:13, lineHeight:1.7, color: msg.role==="user" ? "#81c784" : "#c8e6c9" }}>
+                    <div className="prose-green">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
+                        {msg.content}
+                      </ReactMarkdown>
+                    </div>
                   </div>
                   {msg.sources && msg.sources.length > 0 && (
                     <div style={{ marginTop:8, display:"flex", flexWrap:"wrap", gap:6 }}>
                       {msg.sources.map((s,si) => (
                         <a key={si} href={s.url} target="_blank" rel="noreferrer" style={{ fontSize:10, color:"#4a7a4a", background:"#0d1a0d", border:"1px solid #1a3a1a", borderRadius:4, padding:"3px 8px", textDecoration:"none" }}>
-                          📋 {s.doc_number || s.title.substring(0,30)}
+                          📋 {s.doc_number || (s.title ? s.title.substring(0,30) : "Աղբյուր")}
                         </a>
                       ))}
                     </div>
@@ -188,8 +230,12 @@ export default function EcoAgentDashboard() {
             {streaming && (
               <div style={{ marginBottom:24, display:"flex", gap:14 }}>
                 <div style={{ width:32, height:32, borderRadius:"50%", background:"#0d2a0d", border:"1px solid #1a4a1a", display:"flex", alignItems:"center", justifyContent:"center", fontSize:14 }}>🌿</div>
-                <div style={{ background:"#080d08", border:"1px solid #142814", borderRadius:10, padding:"14px 18px", fontSize:13, lineHeight:1.7, whiteSpace:"pre-wrap", color:"#c8e6c9", maxWidth:"75%" }}>
-                  {streaming}
+                <div style={{ background:"#080d08", border:"1px solid #142814", borderRadius:10, padding:"14px 18px", fontSize:13, lineHeight:1.7, color:"#c8e6c9", maxWidth:"75%" }}>
+                  <div className="prose-green">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
+                      {streaming}
+                    </ReactMarkdown>
+                  </div>
                   <span style={{ display:"inline-block", width:8, height:14, background:"#4caf50", marginLeft:2, animation:"blink 1s step-end infinite" }}/>
                 </div>
               </div>

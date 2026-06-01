@@ -38,15 +38,39 @@ def doc_id_hash(doc_id: int, chunk_idx: int) -> str:
     return hashlib.md5(f"{doc_id}_{chunk_idx}".encode()).hexdigest()
 
 
-def search_kb(query: str, sector: Optional[str] = None, top_k: int = 6) -> list[dict]:
+async def search_kb(query: str, sector: Optional[str] = None, top_k: int = 6) -> list[dict]:
+    """Search knowledge base using hybrid vector + keyword search"""
+    try:
+        from db.supabase_client import search_laws
+        results = await search_laws(query, sector, top_k)
+        return [
+            {
+                "id": r["id"],
+                "doc_id": r["law_id"],
+                "title": r["title"],
+                "chunk": r["chunk_text"],
+                "sector": r["sector"],
+                "url": r["url"],
+                "doc_number": r["doc_number"],
+                "similarity": r["similarity"],
+            }
+            for r in results
+        ]
+    except Exception as e:
+        # Fallback to in-memory search if DB is unavailable
+        print(f"[⚠️] DB search failed, using fallback: {e}")
+        return _fallback_search(query, sector, top_k)
+
+def _fallback_search(query: str, sector: Optional[str] = None, top_k: int = 6) -> list[dict]:
+    """Original keyword-based fallback search"""
     query_words = set(query.lower().split())
     scored = []
     for chunk in _knowledge_base:
-        if sector and chunk["sector"] != sector and chunk["sector"] != "general":
+        if sector and chunk['sector'] != sector and chunk['sector'] != 'general':
             continue
-        text = (chunk["title"] + " " + chunk["chunk"]).lower()
+        text = (chunk['title'] + ' ' + chunk['chunk']).lower()
         score = sum(1 for w in query_words if w in text)
-        if any(w in chunk["title"].lower() for w in query_words):
+        if any(w in chunk['title'].lower() for w in query_words):
             score += 3
         if score > 0:
             scored.append((score, chunk))
@@ -69,7 +93,7 @@ def build_context(chunks: list[dict]) -> str:
 
 
 async def query_ecoagent(question: str, sector: Optional[str] = None) -> dict:
-    chunks = search_kb(question, sector=sector)
+    chunks = await search_kb(question, sector=sector)
     context = build_context(chunks) if chunks else "Տվյալ հարցին վերաբերել տեղեկատվություն չի գտնվել։"
 
     system_prompt = """Դու EcoAgent Armenia-ն ես — Հայաստանի բնապահպանական-տնտեսագիտական AI խորհրդատու։

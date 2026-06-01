@@ -53,6 +53,8 @@ app.add_middleware(
 @app.on_event("startup")
 async def startup():
     global _knowledge_base
+
+    # Initialize in-memory KB (fallback)
     _knowledge_base.clear()
     for doc in SEED_LAWS:
         chunks = chunk_text(doc.get("body", ""))
@@ -68,6 +70,15 @@ async def startup():
                 "date":       doc.get("date", ""),
                 "source":     doc.get("source", "arlis.am"),
             })
+
+    # Initialize Supabase DB
+    try:
+        from db.supabase_client import init_db
+        await init_db()
+        print(f"[✓] Supabase initialized")
+    except Exception as e:
+        print(f"[⚠️] Supabase init failed: {e}")
+
     print(f"[✓] EcoAgent started — {len(_knowledge_base)} chunks in KB")
 
 
@@ -116,7 +127,7 @@ async def query_stream(req: QueryRequest):
         api_key=os.getenv("OPENROUTER_API_KEY"),
     )
 
-    chunks = search_kb(req.question, sector=req.sector, top_k=6)
+    chunks = await search_kb(req.question, sector=req.sector, top_k=6)
     context = build_context(chunks) if chunks else "Տvyal harcit veraberel teghekvatyun chi gtvel."
 
     system_prompt = """Դու EcoAgent Armenia-ն ես՝ Հայաստանի բնապահպանական արհեստական բանականության խորհրդատուն։
@@ -226,6 +237,27 @@ async def get_stats():
         "sectors":      sector_counts,
         "last_updated": datetime.utcnow().isoformat(),
     }
+
+
+# Add analytics endpoints
+
+@app.post('/feedback')
+async def submit_feedback(query_id: int, feedback: str):
+    """Submit user feedback (up/down) for a query"""
+    from db.supabase_client import get_supabase
+    supabase = get_supabase()
+    supabase.table("query_analytics").update({
+        "user_feedback": feedback
+    }).eq("id", query_id).execute()
+    return {"status": "ok"}
+
+@app.get('/analytics')
+async def get_analytics():
+    """Get query analytics (admin only)"""
+    from db.supabase_client import get_supabase
+    supabase = get_supabase()
+    result = supabase.table("query_analytics").select("*").execute()
+    return {"analytics": result.data}
 
 
 if __name__ == "__main__":

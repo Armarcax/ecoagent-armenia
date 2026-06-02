@@ -43,8 +43,9 @@ app.add_middleware(
         "https://ecoagent.am",
         "https://ecoagent-armenia-9dm3flk7n-armarcaxs-projects.vercel.app",
         "https://ecoagent-armenia.vercel.app",
+        "*",  # Allow all origins for now
     ],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
